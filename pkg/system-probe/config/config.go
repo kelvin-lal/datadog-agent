@@ -43,6 +43,7 @@ const (
 	DiscoveryModule              types.ModuleName = "discovery"
 	GPUMonitoringModule          types.ModuleName = "gpu"
 	SoftwareInventoryModule      types.ModuleName = "software_inventory"
+	FDTransferModule             types.ModuleName = "fd_transfer"
 )
 
 // New creates a config object for system-probe. It assumes no configuration has been loaded as this point.
@@ -174,6 +175,11 @@ func load() (*types.Config, error) {
 
 	if cfg.GetBool(wcdNS("enabled")) {
 		c.EnabledModules[WindowsCrashDetectModule] = struct{}{}
+	}
+
+	// Enable FD transfer module on Linux
+	if runtime.GOOS == "linux" {
+		c.EnabledModules[FDTransferModule] = struct{}{}
 	}
 	if runtime.GOOS == "windows" {
 		if c.ModuleIsEnabled(NetworkTracerModule) || c.ModuleIsEnabled(EventMonitorModule) {
