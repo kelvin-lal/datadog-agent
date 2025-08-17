@@ -314,6 +314,7 @@
 /comp/networkpath @DataDog/Networks
 /comp/otelcol @DataDog/opentelemetry-agent
 /comp/process @DataDog/container-experiences
+/comp/process/connectionscheck @DataDog/Networks @DataDog/universal-service-monitoring
 /comp/remote-config @DataDog/remote-config
 /comp/snmptraps @DataDog/ndm-core
 /comp/systray @DataDog/windows-products
