@@ -31,7 +31,7 @@ import (
 	"k8s.io/kube-state-metrics/v2/pkg/metric"
 )
 
-// Enum to define metric name either init = 'initcontainer' or  standard = 'container'
+// ContainerType is an enum to define metric name for container type which can be either init = 'initcontainer' or  standard = 'container'
 type ContainerType string
 
 const (
