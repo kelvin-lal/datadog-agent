@@ -8,6 +8,7 @@
 package rcscrape_test
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/DataDog/datadog-agent/pkg/config/remote/data"
@@ -91,6 +93,8 @@ func runScrapeRemoteConfigTest(t *testing.T, program string, cfg testprogs.Confi
 		"DD_REMOTE_CONFIGURATION_ENABLED=true",
 		"DD_REMOTE_CONFIG_POLL_INTERVAL_SECONDS=.01",
 		"DD_SERVICE=rc_tester",
+		"DD_ENV=test",
+		"DD_VERSION=1.0.0",
 		"DD_REMOTE_CONFIG_TUF_NO_VERIFICATION=true",
 	}
 	childStdout, err := os.Create(path.Join(tmpDir, "child.stdout"))
@@ -120,9 +124,14 @@ func runScrapeRemoteConfigTest(t *testing.T, program string, cfg testprogs.Confi
 		require.NoError(t, err)
 		rcsFiles[mkPath(t, probe.GetID())] = marshaled
 	}
+	payload := []byte(`{"uploadSymbols": true}`)
+	symdbPath := mkPathWithVal("LIVE_DEBUGGING_SYMBOL_DB", "symDb", payload)
+	rcsFiles[symdbPath] = payload
+
 	rcHandler.UpdateRemoteConfig(rcsFiles)
 
-	waitForExpected(t, rcScraper, append(probes[:0:0], probes...))
+	t.Log("waiting for state 1")
+	waitForExpected(t, rcScraper, append(probes[:0:0], probes...), true /* expShouldUploadSymDB */)
 
 	// Make sure that the scraper handles more updates correctly.
 	newUpdate := append(probes[:0:0], probes...)
@@ -143,11 +152,14 @@ func runScrapeRemoteConfigTest(t *testing.T, program string, cfg testprogs.Confi
 		rcsFiles[mkPath(t, probe.GetID())] = marshaled
 	}
 	rcsFiles[mkPath(t, "empty")] = []byte{}
+	// Remove the SymDB key.
+	delete(rcsFiles, symdbPath)
 	rcHandler.UpdateRemoteConfig(rcsFiles)
-	waitForExpected(t, rcScraper, newUpdate)
+	t.Log("waiting for state 2")
+	waitForExpected(t, rcScraper, newUpdate, false /* expShouldUploadSymDB */)
 }
 
-func waitForExpected(t *testing.T, rcScraper *rcscrape.Scraper, exp []ir.ProbeDefinition) {
+func waitForExpected(t *testing.T, rcScraper *rcscrape.Scraper, exp []ir.ProbeDefinition, expShouldUploadSymDB bool) {
 	slices.SortFunc(exp, ir.CompareProbeIDs)
 	require.Eventually(t, func() bool {
 		updates := rcScraper.GetUpdates()
@@ -156,7 +168,8 @@ func waitForExpected(t *testing.T, rcScraper *rcscrape.Scraper, exp []ir.ProbeDe
 		}
 		got := updates[0].Probes
 		slices.SortFunc(got, ir.CompareProbeIDs)
-		require.Equal(t, exp, got)
+		assert.Equal(t, exp, got)
+		assert.Equal(t, expShouldUploadSymDB, updates[0].ShouldUploadSymDB)
 		return true
 	}, 10*time.Second, 100*time.Microsecond)
 }
@@ -195,6 +208,16 @@ func mkPath(t *testing.T, name string) string {
 		Product:  data.ProductLiveDebugging,
 		ConfigID: configID.String(),
 		Name:     name,
+	})
+}
+
+func mkPathWithVal(product data.Product, id string, val []byte) string {
+	return formatConfigPath(data.ConfigPath{
+		Source:   data.SourceDatadog,
+		OrgID:    1234,
+		Product:  string(product),
+		ConfigID: id,
+		Name:     hex.EncodeToString(val),
 	})
 }
 

@@ -514,6 +514,7 @@ type interceptingActuator struct {
 	mu    struct {
 		sync.Mutex
 		tenants map[string]*interceptingTenant
+		updates []actuator.ProcessesUpdate
 	}
 }
 
