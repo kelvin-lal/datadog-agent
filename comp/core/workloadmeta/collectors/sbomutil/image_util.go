@@ -8,11 +8,15 @@
 package sbomutil
 
 import (
+	"bytes"
+	"compress/gzip"
+	"io"
 	"slices"
 
 	trivycore "github.com/aquasecurity/trivy/pkg/sbom/core"
 	trivydx "github.com/aquasecurity/trivy/pkg/sbom/cyclonedx"
 	"github.com/mohae/deepcopy"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/DataDog/agent-payload/v5/cyclonedx_v1_4"
 	workloadmeta "github.com/DataDog/datadog-agent/comp/core/workloadmeta/def"
@@ -121,4 +125,67 @@ func unwrapStringPtr(ptr *string) string {
 		return ""
 	}
 	return *ptr
+}
+
+// CompressSBOM converts a workloadmeta.SBOM into a workloadmeta.CompressedSBOM.
+func CompressSBOM(sbom *workloadmeta.SBOM) (*workloadmeta.CompressedSBOM, error) {
+	if sbom == nil {
+		return nil, nil
+	}
+
+	uncompressedBom, err := proto.Marshal(sbom.CycloneDXBOM)
+	if err != nil {
+		return nil, err
+	}
+
+	var compressedBom bytes.Buffer
+	writer := gzip.NewWriter(&compressedBom)
+	if _, err := writer.Write(uncompressedBom); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+
+	return &workloadmeta.CompressedSBOM{
+		Bom:                compressedBom.Bytes(),
+		GenerationTime:     sbom.GenerationTime,
+		GenerationDuration: sbom.GenerationDuration,
+		Status:             sbom.Status,
+		Error:              sbom.Error,
+	}, nil
+}
+
+// UncompressSBOM converts a workloadmeta.CompressedSBOM into a workloadmeta.SBOM.
+func UncompressSBOM(csbom *workloadmeta.CompressedSBOM) (*workloadmeta.SBOM, error) {
+	if csbom == nil {
+		return nil, nil
+	}
+
+	reader, err := gzip.NewReader(bytes.NewReader(csbom.Bom))
+	if err != nil {
+		return nil, err
+	}
+
+	uncompressedBom, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := reader.Close(); err != nil {
+		return nil, err
+	}
+
+	var cyclosbom cyclonedx_v1_4.Bom
+	if err := proto.Unmarshal(uncompressedBom, &cyclosbom); err != nil {
+		return nil, err
+	}
+
+	return &workloadmeta.SBOM{
+		CycloneDXBOM:       &cyclosbom,
+		GenerationTime:     csbom.GenerationTime,
+		GenerationDuration: csbom.GenerationDuration,
+		Status:             csbom.Status,
+		Error:              csbom.Error,
+	}, nil
 }
