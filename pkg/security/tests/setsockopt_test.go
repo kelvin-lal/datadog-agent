@@ -269,6 +269,8 @@ func TestSetSockOpt(t *testing.T) {
 		})
 	})
 	t.Run("setsockopt-TruncatedFilter", func(t *testing.T) {
+		SkipIfNotAvailable(t)
+		// skipped for eBPFLess because there is no possible truncation
 		var fd int
 
 		defer func() {}()
