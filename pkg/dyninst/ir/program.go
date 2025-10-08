@@ -40,6 +40,35 @@ type Program struct {
 	MaxTypeID TypeID
 	// Issues is a list of probes that could not be created.
 	Issues []ProbeIssue
+	// GoModuledataInfo is used to resolve types from interfaces.
+	GoModuledataInfo GoModuledataInfo
+	// CommonTypes store references to common types.
+	CommonTypes CommonTypes
+}
+
+// GoModuledataInfo is information about the runtime-internal structure used to
+// translate type pointer addresses to Go runtime type IDs. This information is
+// used in the generated program to resolve type information for interface
+// values.
+type GoModuledataInfo struct {
+	// FirstModuledataAddr is the virtual memory address of the firstmoduledata
+	// variable.
+	//
+	// See https://github.com/golang/go/blob/5a56d884/src/runtime/symtab.go#L483
+	FirstModuledataAddr uint64
+	// TypesOffset is the offset in the runtime.moduledata type of
+	// the types field.
+	//
+	// See https://github.com/golang/go/blob/5a56d884/src/runtime/symtab.go#L414
+	TypesOffset uint32
+}
+
+// CommonTypes stores references to common types.
+type CommonTypes struct {
+	// G corresponds to runtime.g, non-nil
+	G *StructureType
+	// M corresponds to runtime.m, non-nil
+	M *StructureType
 }
 
 // InlinePCRanges represent the pc ranges for a single instance of an inlined subprogram.
@@ -48,7 +77,9 @@ type Program struct {
 // subprogram A, that has been inlined into subprogram B, and subprogram B has been inlined
 // to a subprogram C, and C is not inlined, then these are pc ranges of C.
 type InlinePCRanges struct {
-	Ranges     []PCRange
+	// Non-overlapping and sorted.
+	Ranges []PCRange
+	// Non-overlapping and sorted.
 	RootRanges []PCRange
 }
 
@@ -59,7 +90,7 @@ type Subprogram struct {
 	// Name is the name of the subprogram.
 	Name string
 	// OutOfLinePCRanges are the ranges of PC values that will be probed for the
-	// out-of-line-instances of the subprogram. These are sorted by start PC.
+	// out-of-line instance of the subprogram. These are sorted by start PC.
 	// Some functions may be inlined only in certain callers, in which case
 	// both OutOfLinePCRanges and InlinedPCRanges will be non-empty.
 	OutOfLinePCRanges []PCRange
@@ -70,17 +101,6 @@ type Subprogram struct {
 	Variables []*Variable
 }
 
-// SubprogramLine represents a line in the subprogram.
-type SubprogramLine struct {
-	PC              uint64
-	File            string
-	Line            uint32
-	Column          uint32
-	IsStatement     bool
-	IsPrologueEnd   bool
-	IsEpilogueStart bool
-}
-
 // Variable represents a variable or parameter in the subprogram.
 type Variable struct {
 	// Name is the name of the variable.
@@ -88,6 +108,8 @@ type Variable struct {
 	// Type is the type of the variable.
 	Type Type
 	// Locations are the locations of the variable in the subprogram.
+	// Sorted by low limit of their ranges. Note the ranges might overlap,
+	// in case of variables inlined multiple times in the same parent subprogram.
 	Locations []Location
 	// IsParameter is true if the variable is a parameter.
 	IsParameter bool
@@ -114,9 +136,13 @@ type Event struct {
 	// ID of the event. This is used to identify data produced by the event over
 	// the ring buffer.
 	ID EventID
+	// Kind is the kind of event.
+	Kind EventKind
+	// SourceLine for line events, empty otherwise.
+	SourceLine string `json:"-"`
 	// The datatype of the event.
 	Type *EventRootType
-	// The PC values at which the event should be injected.
+	// The PC values at which the event should be injected. Sorted by PC.
 	InjectionPoints []InjectionPoint
 	// The condition that must be met for the event to be injected.
 	Condition *Expression
@@ -128,4 +154,9 @@ type InjectionPoint struct {
 	PC uint64
 	// Whether the function at that PC is frameless.
 	Frameless bool
+	// HasAssociatedReturn is true if there is going to be a return associated
+	// with this call.
+	HasAssociatedReturn bool `json:"-"`
+	// TopPCOffset is the offset of the top PC from the entry PC.
+	TopPCOffset int8 `json:"-"`
 }

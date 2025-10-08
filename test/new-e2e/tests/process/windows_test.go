@@ -13,16 +13,14 @@ import (
 	"time"
 
 	agentmodel "github.com/DataDog/agent-payload/v5/process"
-	"github.com/DataDog/datadog-agent/pkg/util/testutil/flake"
 	"github.com/DataDog/test-infra-definitions/components/datadog/agentparams"
 	"github.com/DataDog/test-infra-definitions/components/os"
 	"github.com/DataDog/test-infra-definitions/scenarios/aws/ec2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/DataDog/datadog-agent/test/new-e2e/pkg/components"
-
 	"github.com/DataDog/datadog-agent/test/fakeintake/aggregator"
+	"github.com/DataDog/datadog-agent/test/new-e2e/pkg/components"
 	"github.com/DataDog/datadog-agent/test/new-e2e/pkg/e2e"
 	"github.com/DataDog/datadog-agent/test/new-e2e/pkg/environments"
 	awshost "github.com/DataDog/datadog-agent/test/new-e2e/pkg/provisioners/aws/host"
@@ -39,7 +37,7 @@ func TestWindowsTestSuite(t *testing.T) {
 	e2e.Run(t, &windowsTestSuite{},
 		e2e.WithProvisioner(
 			awshost.Provisioner(
-				awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsDefault)),
+				awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsServerDefault)),
 				awshost.WithAgentOptions(agentparams.WithAgentConfig(processCheckConfigStr)),
 			),
 		),
@@ -56,14 +54,10 @@ func (s *windowsTestSuite) SetupSuite() {
 	// Install chocolatey - https://chocolatey.org/install
 	// This may be due to choco rate limits - https://datadoghq.atlassian.net/browse/ADXT-950
 	stdout, err := s.Env().RemoteHost.Execute("Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iwr https://community.chocolatey.org/install.ps1 -UseBasicParsing | iex")
-	if err != nil {
-		s.T().Logf("Failed to install chocolatey: %s, err: %s", stdout, err)
-	}
+	require.NoErrorf(s.T(), err, "Failed to install chocolatey: %s, err: %s", stdout, err)
 	// Install diskspd for IO tests - https://learn.microsoft.com/en-us/azure/azure-local/manage/diskspd-overview
 	stdout, err = s.Env().RemoteHost.Execute("C:\\ProgramData\\chocolatey\\bin\\choco.exe install -y diskspd")
-	if err != nil {
-		s.T().Logf("Failed to install diskspd: %s, err: %s", stdout, err)
-	}
+	require.NoErrorf(s.T(), err, "Failed to install diskspd: %s, err: %s", stdout, err)
 }
 
 func (s *windowsTestSuite) TestAPIKeyRefresh() {
@@ -80,7 +74,7 @@ func (s *windowsTestSuite) TestAPIKeyRefresh() {
 
 	s.UpdateEnv(
 		awshost.Provisioner(
-			awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsDefault)),
+			awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsServerDefault)),
 			awshost.WithAgentOptions(
 				agentParams...,
 			),
@@ -127,7 +121,7 @@ func (s *windowsTestSuite) TestAPIKeyRefreshAdditionalEndpoints() {
 
 	s.UpdateEnv(
 		awshost.Provisioner(
-			awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsDefault)),
+			awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsServerDefault)),
 			awshost.WithAgentOptions(
 				agentParams...,
 			),
@@ -178,7 +172,7 @@ func assertProcessCheck(t *testing.T, env *environments.Host, withIOStats bool, 
 
 		assertProcessCollectedNew(c, payloads, withIOStats, processName)
 
-		procs := filterProcessPayloadsByName(payloads, processName)
+		procs := FilterProcessPayloadsByName(payloads, processName)
 		require.NotEmpty(t, procs, "'%s' process not found in payloads: \n%+v", processName, payloads)
 		assertProcessCommandLineArgs(c, procs, processCMDArgs)
 	}, 2*time.Minute, 10*time.Second)
@@ -186,7 +180,7 @@ func assertProcessCheck(t *testing.T, env *environments.Host, withIOStats bool, 
 
 func (s *windowsTestSuite) TestProtectedProcessCheck() {
 	s.UpdateEnv(awshost.Provisioner(
-		awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsDefault)),
+		awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsServerDefault)),
 		awshost.WithAgentOptions(agentparams.WithAgentConfig(processCheckConfigStr)),
 	))
 	// MsMpEng.exe is a protected process so we can't access any command line arguments
@@ -195,7 +189,7 @@ func (s *windowsTestSuite) TestProtectedProcessCheck() {
 
 func (s *windowsTestSuite) TestProtectedProcessChecksInCoreAgent() {
 	t := s.T()
-	s.UpdateEnv(awshost.Provisioner(awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsDefault)),
+	s.UpdateEnv(awshost.Provisioner(awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsServerDefault)),
 		awshost.WithAgentOptions(agentparams.WithAgentConfig(processCheckInCoreAgentConfigStr))))
 	// MsMpEng.exe is a protected process so we can't access any command line arguments
 	assertProcessCheck(t, s.Env(), false, false, "MsMpEng.exe", []string{"MsMpEng.exe"})
@@ -210,7 +204,7 @@ func (s *windowsTestSuite) TestProtectedProcessChecksInCoreAgent() {
 func (s *windowsTestSuite) TestProcessDiscoveryCheck() {
 	t := s.T()
 	s.UpdateEnv(awshost.Provisioner(
-		awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsDefault)),
+		awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsServerDefault)),
 		awshost.WithAgentOptions(agentparams.WithAgentConfig(processDiscoveryCheckConfigStr)),
 	))
 
@@ -231,7 +225,7 @@ func (s *windowsTestSuite) TestProcessDiscoveryCheck() {
 
 func (s *windowsTestSuite) TestUnprotectedProcessCheckIO() {
 	s.UpdateEnv(awshost.Provisioner(
-		awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsDefault)),
+		awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsServerDefault)),
 		awshost.WithAgentOptions(agentparams.WithAgentConfig(processCheckConfigStr), agentparams.WithSystemProbeConfig(systemProbeConfigStr)),
 	))
 
@@ -245,7 +239,6 @@ func (s *windowsTestSuite) TestUnprotectedProcessCheckIO() {
 }
 
 func (s *windowsTestSuite) TestManualProcessCheck() {
-	flake.Mark(s.T())
 	// test can be flaky due to missing CPU stats when cpu usage is extremely low (json output omits 0 values), so we want to re-run a full scan to ensure we have CPU stats
 	s.Env().RemoteHost.MustExecute("Start-MpScan -ScanType FullScan -AsJob")
 	check := s.Env().RemoteHost.
@@ -261,7 +254,7 @@ func (s *windowsTestSuite) TestManualProcessDiscoveryCheck() {
 
 func (s *windowsTestSuite) TestManualUnprotectedProcessCheckWithIO() {
 	s.UpdateEnv(awshost.Provisioner(
-		awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsDefault)),
+		awshost.WithEC2InstanceOptions(ec2.WithOS(os.WindowsServerDefault)),
 		awshost.WithAgentOptions(agentparams.WithAgentConfig(processCheckConfigStr), agentparams.WithSystemProbeConfig(systemProbeConfigStr)),
 	))
 
